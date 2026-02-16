@@ -1,1 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>戦術状況監視モニタ v63.0</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+JP:wght@900&display=swap');
 
+        :root {
+            --eva-purple: #603479;
+            --eva-purple-deep: #2a1a35;
+            --eva-green: #c5ff00;
+            --eva-orange: #ff9800;
+            --eva-red: #ff2a00;
+            --bg-black: #050505;
+            --font-mono: 'Share Tech Mono', monospace;
+        }
+
+        html, body { 
+            height: 100vh; overflow: hidden; 
+            background-color: var(--bg-black); color: var(--eva-green);
+            font-family: 'Noto Sans JP', sans-serif; margin: 0; padding: 0;
+            background-image: 
+                linear-gradient(rgba(96, 52, 121, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(96, 52, 121, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        body { display: flex; flex-direction: column; align-items: center; }
+
+        .sticky-header {
+            width: 100%; height: 35px; background: var(--eva-purple); border-bottom: 2px solid var(--eva-green);
+            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; z-index: 10; padding: 0 20px; box-sizing: border-box;
+        }
+        
+        .utc-display { font-size: 1.6em; font-family: var(--font-mono); color: #fff; letter-spacing: 2px; }
+
+        .main-container {
+            display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;
+            width: 100vw; height: 92vh; margin-top: 10px; padding: 10px; box-sizing: border-box;
+        }
+
+        .section-box {
+            position: relative; border: 1px solid var(--eva-purple); background: rgba(5, 5, 5, 0.95);
+            padding: 10px 15px; display: flex; flex-direction: column; box-sizing: border-box;
+        }
+
+        .panel-title {
+            position: absolute; top: -11px; left: 20px; background: var(--eva-purple);
+            padding: 0 10px; font-size: 0.8em; color: #fff; font-weight: 900;
+            letter-spacing: 2px; border: 1px solid var(--eva-green);
+            pointer-events: none;
+        }
+
+        [data-tooltip] { position: relative; cursor: help; }
+        [data-tooltip]::after {
+            content: attr(attr(data-tooltip));
+            position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9); color: #fff; padding: 5px 10px;
+            border: 1px solid var(--eva-green); border-radius: 4px; font-size: 0.7em;
+            white-space: nowrap; visibility: hidden; opacity: 0; transition: 0.2s;
+            z-index: 100; pointer-events: none;
+        }
+        [data-tooltip]:hover::after { content: attr(data-tooltip); visibility: visible; opacity: 1; bottom: 110%; }
+
+        .monitor-group { border-left: 6px solid var(--eva-purple-deep); padding: 8px 15px; margin-bottom: 12px; background: rgba(42, 26, 53, 0.4); transition: all 0.2s ease; filter: brightness(0.6); }
+        #group-main.active-sync { border-left: 12px solid var(--eva-green); background: rgba(197, 255, 0, 0.15); filter: brightness(1); color: var(--eva-green); }
+        #group-sub.active-sync { border-left: 12px solid var(--eva-orange); background: rgba(255, 152, 0, 0.15); filter: brightness(1); color: var(--eva-orange); }
+        
+        .label-sm { font-size: 0.9em; font-weight: 900; color: #fff; text-transform: uppercase; }
+        .label-mini { font-size: 0.6em; color: inherit; letter-spacing: 1px; opacity: 0.8; }
+        .val-lg { font-family: var(--font-mono); font-size: 3.5vw; line-height: 0.9; margin: 4px 0; display: block; color: inherit; }
+        .val-md { font-family: var(--font-mono); font-size: 2.1vw; line-height: 1; display: block; color: #fff; }
+        
+        .slider-container { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+        .step-btn { background: var(--eva-purple-deep); border: 1px solid var(--eva-purple); color: #fff; font-family: var(--font-mono); font-weight: 900; width: 30px; height: 30px; cursor: pointer; }
+        
+        input[type="range"] { flex-grow: 1; -webkit-appearance: none; background: transparent; cursor: ns-resize; }
+        input[type="range"]::-webkit-slider-runnable-track { width: 100%; height: 6px; background: var(--eva-purple-deep); border: 1px solid var(--eva-purple); }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 10px; background: var(--eva-green); margin-top: -7px; cursor: pointer; border: 1px solid #000; }
+        #sub-slider::-webkit-slider-thumb { background: var(--eva-orange); }
+        
+        .rally-ctrl-block { margin-bottom: 10px; width: 100%; text-align: center; border: 1px solid var(--eva-purple); padding: 8px; box-sizing: border-box; background: rgba(96, 52, 121, 0.1); }
+        .time-display-sm { font-family: var(--font-mono); font-size: 2.8em; line-height: 1; color: var(--eva-green); }
+        .sync-mini-btn { width: 100%; padding: 8px; background: var(--eva-purple); color: #fff; border: 1px solid var(--eva-green); font-weight: 900; cursor: pointer; margin-top: 5px; }
+        .lift-off-val { font-family: var(--font-mono); font-size: 4.5vw; color: var(--eva-green); line-height: 1; letter-spacing: -2px; }
+        .lift-off-utc-val { font-size: 1.2em; font-family: var(--font-mono); font-weight: 900; }
+        .num-input, .text-input { width: 100%; background: #000; border: 1px solid var(--eva-purple); color: var(--eva-green); font-family: var(--font-mono); padding: 4px; text-align: center; box-sizing: border-box; }
+        .radio-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 5px 0; }
+        .radio-selector label { background: var(--eva-purple-deep); border: 1px solid var(--eva-purple); padding: 6px; text-align: center; cursor: pointer; font-size: 0.75em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .radio-selector input:checked + span { color: var(--eva-green); font-weight: 900; }
+        .radio-selector label:has(input:checked) { border-color: var(--eva-green); background: var(--eva-purple); }
+        .status-critical { animation: step-red 0.5s step-end infinite; color: var(--eva-red) !important; background: rgba(255, 42, 0, 0.2) !important; }
+        @keyframes step-red { 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+
+    <header class="sticky-header">
+        <div style="font-size: 0.8em; font-weight: 900; color: #fff;">戦術状況監視モニタ v63.0</div>
+        <div id="current-utc" class="utc-display">00:00:00.0</div>
+        <div style="width: 150px;"></div>
+    </header>
+
+    <div class="main-container">
+        <div class="section-box">
+            <span class="panel-title">戦術状況監視</span>
+            <div id="group-main" class="monitor-group active-sync">
+                <span class="label-sm" id="label-name-main">MAIN TARGET</span><br>
+                <span class="label-mini">到着までの残り時間</span>
+                <span id="target-main-countdown" class="val-lg">00:00:00.0</span>
+                <span class="label-mini">到着予定時刻</span>
+                <span id="arrival-main-display" class="val-md">00:00:00.0</span>
+            </div>
+            <div id="group-sub" class="monitor-group">
+                <span class="label-sm" id="label-name-sub">SUB TARGET</span><br>
+                <span class="label-mini">到着までの残り時間</span>
+                <span id="target-sub-countdown" class="val-lg">00:00:00.0</span>
+                <span class="label-mini">到着予定時刻</span>
+                <span id="arrival-sub-display" class="val-md">00:00:00.0</span>
+            </div>
+            <div id="group-my" class="monitor-group" style="opacity: 1; filter: brightness(1);">
+                <span class="label-sm">MY UNIT STATUS</span><br>
+                <span class="label-mini">到着までの残り時間 (オフセット込)</span>
+                <span id="my-countdown" class="val-lg">00:00:00.0</span>
+                <span class="label-mini" id="label-offset-arrival">最終到着予定時刻 (OFFSET 0s)</span>
+                <span id="arrival-my-display" class="val-md" style="color: var(--eva-green);">00:00:00.0</span>
+            </div>
+        </div>
+
+        <div class="section-box">
+            <span class="panel-title">作戦進捗管理</span>
+            <div class="rally-ctrl-block">
+                <span class="label-sm" style="color:var(--eva-green)" id="ctrl-name-main">MAIN</span>
+                <div id="main-rem-val" class="time-display-sm">5:00</div>
+                <div class="slider-container">
+                    <button class="step-btn" onclick="stepTime('main', -1)">-</button>
+                    <input type="range" id="main-slider" min="0" max="300" value="300" oninput="updateTime('main', this.value)" data-tooltip="マウススクロールで微調整可能">
+                    <button class="step-btn" onclick="stepTime('main', 1)">+</button>
+                </div>
+                <button class="sync-mini-btn" onclick="syncTrigger('main')">MAIN 同期開始</button>
+            </div>
+            <div class="rally-ctrl-block">
+                <span class="label-sm" style="color:var(--eva-orange)" id="ctrl-name-sub">SUB</span>
+                <div id="sub-rem-val" class="time-display-sm">5:00</div>
+                <div class="slider-container">
+                    <button class="step-btn" onclick="stepTime('sub', -1)">-</button>
+                    <input type="range" id="sub-slider" min="0" max="300" value="300" oninput="updateTime('sub', this.value)" data-tooltip="マウススクロールで微調整可能">
+                    <button class="step-btn" onclick="stepTime('sub', 1)">+</button>
+                </div>
+                <button class="sync-mini-btn" onclick="syncTrigger('sub')" style="background:var(--eva-orange); border-color:var(--eva-orange); color:#000;">SUB 同期開始</button>
+            </div>
+            <div style="text-align: center; margin-top: 5px; border-top: 2px solid var(--eva-purple); padding-top: 5px;">
+                <span class="label-sm">LIFT-OFF COUNTDOWN / MARCHING</span>
+                <div id="lift-off-timer" class="lift-off-val">00:00.0</div>
+                <div class="label-mini" style="margin-top:5px; color:#fff;">MY LIFT-OFF UTC</div>
+                <div id="lift-off-utc" class="lift-off-utc-val" style="color:var(--eva-green);">--:--:--</div>
+            </div>
+            <button style="width:100%; margin-top:auto; background:transparent; border:1px solid var(--eva-purple); color:var(--eva-purple); padding:5px; font-size:0.7em;" onclick="resetAll()">SYSTEM RESET</button>
+        </div>
+
+        <div class="section-box">
+            <span class="panel-title">引数設定</span>
+            <div class="settings-item">
+                <span class="label-sm">MAIN CONFIG</span>
+                <input type="text" id="input-name-main" class="text-input" value="MAIN TARGET" oninput="applyNames()">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:5px;">
+                    <div><span style="font-size:0.6em;">行軍(秒)</span><input type="number" id="march-main-s" class="num-input" value="45" oninput="updateDynamic()"></div>
+                    <div><span style="font-size:0.6em;">OFFSET</span><input type="number" id="offset-main-s" class="num-input" value="0" oninput="updateDynamic()"></div>
+                </div>
+            </div>
+            <div class="settings-item">
+                <span class="label-sm">SUB CONFIG</span>
+                <input type="text" id="input-name-sub" class="text-input" value="SUB TARGET" oninput="applyNames()">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:5px;">
+                    <div><span style="font-size:0.6em;">行軍(秒)</span><input type="number" id="march-sub-s" class="num-input" value="45" oninput="updateDynamic()"></div>
+                    <div><span style="font-size:0.6em;">OFFSET</span><input type="number" id="offset-sub-s" class="num-input" value="0" oninput="updateDynamic()"></div>
+                </div>
+            </div>
+            <div class="settings-item">
+                <span class="label-sm">自軍行軍時間(秒)</span>
+                <input type="number" id="march-my-s" class="num-input" value="45" oninput="updateDynamic()">
+            </div>
+            <span class="label-sm" style="font-size:0.7em;">SYNC_TARGET_SELECT</span>
+            <div class="radio-selector">
+                <label><input type="radio" name="sync-target" value="main" checked onchange="switchSyncTarget()"><span id="radio-label-main">MAIN</span></label>
+                <label><input type="radio" name="sync-target" value="sub" onchange="switchSyncTarget()"><span id="radio-label-sub">SUB</span></label>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timers = { main: 300, sub: 300 };
+        let activeSyncKey = 'main';
+        let status = { main: { active: false, start: 0, initial: 300 }, sub: { active: false, start: 0, initial: 300 } };
+
+        const formatUTC = (ms) => {
+            const d = new Date(ms);
+            return `${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}:${d.getUTCSeconds().toString().padStart(2,'0')}.${Math.floor(d.getUTCMilliseconds()/100).toString().padStart(1,'0')}`;
+        };
+
+        function initWheelSupport(id, key) {
+            const el = document.getElementById(id);
+            el.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY < 0 ? 1 : -1;
+                stepTime(key, delta);
+            }, { passive: false });
+        }
+
+        function stepTime(key, delta) {
+            const el = document.getElementById(`${key}-slider`);
+            el.value = Math.max(0, Math.min(el.max, parseInt(el.value) + delta));
+            updateTime(key, el.value);
+        }
+
+        function updateTime(key, val) {
+            timers[key] = parseInt(val);
+            document.getElementById(`${key}-rem-val`).innerText = `${Math.floor(val/60)}:${(val%60).toString().padStart(2,'0')}`;
+        }
+
+        function syncTrigger(key) { status[key].active = true; status[key].start = Date.now(); status[key].initial = timers[key]; }
+        function switchSyncTarget() {
+            activeSyncKey = document.querySelector('input[name="sync-target"]:checked').value;
+            document.getElementById('group-main').classList.toggle('active-sync', activeSyncKey === 'main');
+            document.getElementById('group-sub').classList.toggle('active-sync', activeSyncKey === 'sub');
+        }
+
+        function resetAll() {
+            status.main.active = false; status.sub.active = false;
+            ['target-main-countdown','target-sub-countdown','my-countdown','lift-off-timer'].forEach(id => {
+                document.getElementById(id).classList.remove('status-critical');
+            });
+        }
+
+        setInterval(() => {
+            document.getElementById('current-utc').innerText = formatUTC(Date.now());
+            updateDynamic();
+        }, 50);
+
+        function updateDynamic() {
+            const now = Date.now();
+            const mMain = parseInt(document.getElementById('march-main-s').value) || 0;
+            const mSub = parseInt(document.getElementById('march-sub-s').value) || 0;
+            const mMy = parseInt(document.getElementById('march-my-s').value) || 0;
+            const offMain = parseInt(document.getElementById('offset-main-s').value) || 0;
+            const offSub = parseInt(document.getElementById('offset-sub-s').value) || 0;
+
+            let elapsedM = status.main.active ? (now - status.main.start) / 1000 : 0;
+            let remM = (status.main.active ? status.main.initial : timers.main) - elapsedM + mMain;
+            updateTimer('target-main-countdown', remM, false, 'main', mMy);
+            let arrivalM = status.main.active ? status.main.start + (status.main.initial + mMain)*1000 : null;
+            document.getElementById('arrival-main-display').innerText = arrivalM ? formatUTC(arrivalM) : "00:00:00.0";
+
+            let elapsedS = status.sub.active ? (now - status.sub.start) / 1000 : 0;
+            let remS = (status.sub.active ? status.sub.initial : timers.sub) - elapsedS + mSub;
+            updateTimer('target-sub-countdown', remS, false, 'sub', mMy);
+            let arrivalS = status.sub.active ? status.sub.start + (status.sub.initial + mSub)*1000 : null;
+            document.getElementById('arrival-sub-display').innerText = arrivalS ? formatUTC(arrivalS) : "00:00:00.0";
+
+            let activeT = activeSyncKey === 'main' ? {rem: remM, arr: arrivalM, off: offMain} : {rem: remS, arr: arrivalS, off: offSub};
+            let loRem = activeT.rem + activeT.off - mMy;
+            updateTimer('lift-off-timer', loRem, true, activeSyncKey, mMy);
+            
+            if (activeT.arr) document.getElementById('lift-off-utc').innerText = formatUTC(activeT.arr + (activeT.off - mMy)*1000).split('.')[0];
+            else document.getElementById('lift-off-utc').innerText = "--:--:--";
+
+            updateTimer('my-countdown', activeT.rem + activeT.off, false, activeSyncKey, mMy);
+            document.getElementById('label-offset-arrival').innerText = `最終到着予定時刻 (OFFSET ${activeT.off}s)`;
+            document.getElementById('arrival-my-display').innerText = activeT.arr ? formatUTC(activeT.arr + (activeT.off * 1000)) : "00:00:00.0";
+        }
+
+        function updateTimer(id, val, isCentral, type, marchLimit) {
+            const el = document.getElementById(id);
+            if (isCentral) {
+                let displayVal;
+                let isMarching = val < 0;
+                let isFinished = isMarching && Math.abs(val) >= marchLimit;
+                if (isFinished) { displayVal = marchLimit; el.style.color = "var(--eva-green)"; el.classList.remove('status-critical'); }
+                else if (isMarching) { displayVal = Math.abs(val); el.style.color = "var(--eva-green)"; el.classList.remove('status-critical'); }
+                else {
+                    displayVal = val;
+                    if (val <= 10) { el.style.color = "var(--eva-red)"; el.classList.add('status-critical'); }
+                    else { el.style.color = type === 'sub' ? "var(--eva-orange)" : "var(--eva-green)"; el.classList.remove('status-critical'); }
+                }
+                const m = Math.floor(displayVal / 60); const s = Math.floor(displayVal % 60); const ms = Math.floor((displayVal % 1) * 10);
+                el.innerText = `${isMarching ? "+" : ""}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
+            } else {
+                if (val <= 0) { el.innerText = "00:00:00.0"; el.classList.add('status-critical'); }
+                else {
+                    el.classList.remove('status-critical');
+                    const s = Math.floor(val % 60); const m = Math.floor((val / 60) % 60); const h = Math.floor(val / 3600);
+                    el.innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${Math.floor((val%1)*10)}`;
+                }
+            }
+        }
+
+        function applyNames() {
+            const nameMain = document.getElementById('input-name-main').value;
+            const nameSub = document.getElementById('input-name-sub').value;
+            document.getElementById('label-name-main').innerText = nameMain;
+            document.getElementById('label-name-sub').innerText = nameSub;
+            document.getElementById('ctrl-name-main').innerText = nameMain;
+            document.getElementById('ctrl-name-sub').innerText = nameSub;
+            document.getElementById('radio-label-main').innerText = nameMain;
+            document.getElementById('radio-label-sub').innerText = nameSub;
+        }
+
+        window.onload = () => {
+            initWheelSupport('main-slider', 'main');
+            initWheelSupport('sub-slider', 'sub');
+            applyNames();
+        };
+    </script>
+</body>
+</html>
